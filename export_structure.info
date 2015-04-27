@@ -1,0 +1,4 @@
+name = Export Structure
+description = Export your site's structure as an installation profile.
+core = 7.x
+files[] = ProfileStreamWrapper.inc

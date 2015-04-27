@@ -1,0 +1,5 @@
+<?php
+
+function export_structure_enable() {
+  drupal_static_reset('file_get_stream_wrappers');
+}

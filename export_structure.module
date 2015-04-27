@@ -1,0 +1,226 @@
+<?php
+
+/**
+ * Implements hook_stream_wrappers().
+ *
+ * Create a stream wrapper to allow write access to the profiles directory.
+ */
+function export_structure_stream_wrappers() {
+  $info['profile'] = array(
+    'name'        => t('Profile files'),
+    'class'       => 'ProfileStreamWrapper',
+    'description' => t('Local profile files.'),
+    'type'        => STREAM_WRAPPERS_LOCAL_NORMAL,
+  );
+  return $info;
+}
+
+/**
+ * Implements hook_menu().
+ *
+ * Create a menu item to export the site's structure.
+ */
+function export_structure_menu() {
+  $items = array();
+
+  $items['admin/export-structure'] = array(
+    'title'             => 'Export Structure',
+    'page callback'     => '_export_structure_page_callback',
+    'access arguments'  => array('access administration menu'),
+    'type'              => MENU_CALLBACK,
+  );
+
+  return $items;
+}
+
+/**
+ * Get the default/available options for the export process.
+ *
+ * @return array
+ */
+function _export_structure_get_defaults() {
+  $date_obj = new DateObject();
+  return array(
+    'machinename' => array(
+      'val' => 'exported_structure',
+      'desc' => 'A machine name for the generated installation profile'
+    ),
+    'name' => array(
+      'val' => 'Exported Structure',
+      'desc' => 'Human-friendly name for the generated installation profile\'s .info file.',
+    ),
+    'description' => array(
+      'val' => 'Exported site structure created ' . $date_obj->format('r'),
+      'desc' => 'Human-friendly description for the generated installation profile\'s .info file.',
+    ),
+    'dependencies' => array(
+      'val' => '',
+      'desc' => 'Comma delimitted list of any dependencies the install profile requires.',
+    ),
+    'core' => array(
+      'val' => '7.x',
+      'desc' => 'Drupal version the install profile requires.',
+    ),
+    'hidden' => array(
+      'val' => 'FALSE',
+      'desc' => 'Whether the install profile should be hidden on the Drupal site installation page',
+    ),
+  );
+}
+
+/**
+ * Merge the user-defined arguments with the default arguments. Note, we don't
+ * use array_merge() here because of our default argument array structure.
+ *
+ * @param array $args
+ *  An array of arguments to overwrite the defaults.
+ *
+ * @return array
+ *  An array of parsed arguments.
+ */
+function _export_structure_parse_args($args) {
+  $parsed_args = _export_structure_get_defaults();
+
+  foreach ($args as $key => $val) {
+    if (isset($args[$key])) {
+      $parsed_args[$key]['val'] = $val;
+    }
+  }
+
+  return $parsed_args;
+}
+
+/**
+ * Callback function for the admin/export-structure menu item.
+ *
+ * @param array $args
+ *  Optional. An array of arguments to overwrite the defaults.
+ */
+function _export_structure_page_callback($args = array()) {
+  include_once DRUPAL_ROOT . '/includes/utility.inc';
+  $output = array();
+  $dependencies = '';
+ 
+  // Set some defaults
+  $default_args = array();
+
+  $profile = array_merge($default_args, $args);
+
+  // Set custom dependencies
+  if (isset($profile['dependencies']) && is_array($profile['dependencies'])) {
+    foreach ($profile['dependencies'] as $dependency) {
+      $dependencies .= 'dependencies[] = ' . $dependency . "\n";
+    }
+  }
+
+  // Export content types
+  $content_types = node_type_get_types();
+  $output['content_types'] = '';
+  foreach ($content_types as $content_type) {
+    $output['content_types'] .= '$content_type = ' . drupal_var_export($content_type) . ";\n";
+    $output['content_types'] .= "node_type_save(\$content_type);\n";
+    $output['content_types'] .= 'unset($content_type);' . "\n\n";
+  }
+
+  // Export vocabularies
+  $vocabs = taxonomy_get_vocabularies();
+  $output['vocabularies'] = '';
+  foreach ($vocabs as $vocab) {
+    unset($vocab->vid);
+    $output['vocabularies'] .= '$vocab = ' . drupal_var_export($vocab) . ";\n";
+    $output['vocabularies'] .= 'taxonomy_vocabulary_save($vocab);' . "\n\n";
+    $output['vocabularies'] .= 'unset($vocab);' . "\n\n";
+  }
+
+  // Export fields
+  $fields = field_info_field_map();
+  $modules = array();
+  $output['fields'] = $output['field_instances'] = '' ;
+
+  foreach ($fields as $field_name => $field) {
+    $field_config = field_info_field($field_name);
+    unset($field_config['id']);
+    $output['fields'] .= "field_create_field(" . drupal_var_export($field_config) . ");\n";
+
+    foreach ($field['bundles'] as $entity_type => $bundles) {
+      foreach ($bundles as $bundle_name) {
+        $field_instance = field_info_instance($entity_type, $field_name, $bundle_name);
+
+        if (!in_array($field_instance['widget']['module'], $modules)) {
+          $modules[] = $field_instance['widget']['module'];
+          $dependencies .= 'dependencies[] = ' . $field_instance['widget']['module'] . "\n";
+        }
+
+        foreach ($field_instance['display'] as $type => $display) {
+          if (isset($display['module']) && !in_array($display['module'], $modules)) {
+            $modules[] = $display['module'];
+            $dependencies .= 'dependencies[] = ' . $display['module'] . "\n";
+          }
+        }
+
+        unset($field_instance['id'], $field_instance['field_id']);
+        $output['field_instances'] .= "field_create_instance(" . drupal_var_export($field_instance) . ");\n";
+        unset($field_instance); // prevent memory spike
+      }
+    }
+  }
+
+  // Create install profile
+  $dir = 'profile://' . $profile['machinename'];
+
+  file_prepare_directory($dir, FILE_CREATE_DIRECTORY);
+  
+  $profile_info = <<<VAL
+name = {$profile['name']}
+description = {$profile['description']}
+core = {$profile['core']}
+hidden = {$profile['hidden']}
+{$dependencies}
+VAL;
+
+  file_unmanaged_save_data($profile_info, $dir . "/{$profile['machinename']}.info", FILE_EXISTS_REPLACE);
+
+  $profile_install = <<<VAL
+<?php
+/**
+ * @file
+ * Install, update and uninstall functions for the {$profile['machinename']} profile.
+ */
+
+/**
+ * Implements hook_install().
+ *
+ * Perform actions to set up the site for this profile.
+ *
+ * @see system_install()
+ */
+function {$profile['machinename']}_install() {
+  // Load Content Types
+  {$output['content_types']};
+
+
+  // Load Vocabularies/Terms
+  {$output['vocabularies']};
+
+
+  // Load Fields
+  {$output['fields']};
+
+
+  // Load Field Instances
+  {$output['field_instances']};
+}
+VAL;
+
+  file_unmanaged_save_data($profile_install, $dir . "/{$profile['machinename']}.install", FILE_EXISTS_REPLACE);
+  file_unmanaged_save_data('', $dir . "/{$profile['machinename']}.profile", FILE_EXISTS_REPLACE);
+
+
+  $msg = t('@profile_name profile created successfully', array('@profile_name' => $profile['machine_name']));
+
+  if (drupal_is_cli()) {
+    drush_log($msg, 'success');
+  } else {
+    echo $msg;
+  }
+}
