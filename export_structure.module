@@ -23,10 +23,10 @@ function export_structure_stream_wrappers() {
 function export_structure_menu() {
   $items = array();
 
-  $items['admin/export-structure'] = array(
+  $items['export-structure'] = array(
     'title'             => 'Export Structure',
     'page callback'     => '_export_structure_page_callback',
-    'access arguments'  => array('access administration menu'),
+    'access arguments'  => TRUE,
     'type'              => MENU_CALLBACK,
   );
 
@@ -48,6 +48,10 @@ function _export_structure_get_defaults() {
     'name' => array(
       'val' => 'Exported Structure',
       'desc' => 'Human-friendly name for the generated installation profile\'s .info file.',
+    ),
+    'url' => array(
+      'val' => null,
+      'desc' => 'A remote URL to generate the site structure from.',
     ),
     'description' => array(
       'val' => 'Exported site structure created ' . $date_obj->format('r'),
@@ -114,54 +118,58 @@ function _export_structure_page_callback($args = array()) {
     }
   }
 
-  // Export content types
-  $content_types = node_type_get_types();
-  $output['content_types'] = '';
-  foreach ($content_types as $content_type) {
-    $output['content_types'] .= '$content_type = ' . drupal_var_export($content_type) . ";\n";
-    $output['content_types'] .= "node_type_save(\$content_type);\n";
-    $output['content_types'] .= 'unset($content_type);' . "\n\n";
-  }
+  if (isset($profile['url'])) {
+    $output = _export_structure_process_remote_url($profile['url']);
+  } else {
+    // Export content types
+    $content_types = node_type_get_types();
+    $output['content_types'] = '';
+    foreach ($content_types as $content_type) {
+      $output['content_types'] .= '$content_type = ' . drupal_var_export($content_type) . ";\n";
+      $output['content_types'] .= "node_type_save(\$content_type);\n";
+      $output['content_types'] .= 'unset($content_type);' . "\n\n";
+    }
 
-  // Export vocabularies
-  $vocabs = taxonomy_get_vocabularies();
-  $output['vocabularies'] = '';
-  foreach ($vocabs as $vocab) {
-    unset($vocab->vid);
-    $output['vocabularies'] .= '$vocab = ' . drupal_var_export($vocab) . ";\n";
-    $output['vocabularies'] .= 'taxonomy_vocabulary_save($vocab);' . "\n\n";
-    $output['vocabularies'] .= 'unset($vocab);' . "\n\n";
-  }
+    // Export vocabularies
+    $vocabs = taxonomy_get_vocabularies();
+    $output['vocabularies'] = '';
+    foreach ($vocabs as $vocab) {
+      unset($vocab->vid);
+      $output['vocabularies'] .= '$vocab = ' . drupal_var_export($vocab) . ";\n";
+      $output['vocabularies'] .= 'taxonomy_vocabulary_save($vocab);' . "\n\n";
+      $output['vocabularies'] .= 'unset($vocab);' . "\n\n";
+    }
 
-  // Export fields
-  $fields = field_info_field_map();
-  $modules = array();
-  $output['fields'] = $output['field_instances'] = '' ;
+    // Export fields
+    $fields = field_info_field_map();
+    $modules = array();
+    $output['fields'] = $output['field_instances'] = '' ;
 
-  foreach ($fields as $field_name => $field) {
-    $field_config = field_info_field($field_name);
-    unset($field_config['id']);
-    $output['fields'] .= "field_create_field(" . drupal_var_export($field_config) . ");\n";
+    foreach ($fields as $field_name => $field) {
+      $field_config = field_info_field($field_name);
+      unset($field_config['id']);
+      $output['fields'] .= "field_create_field(" . drupal_var_export($field_config) . ");\n";
 
-    foreach ($field['bundles'] as $entity_type => $bundles) {
-      foreach ($bundles as $bundle_name) {
-        $field_instance = field_info_instance($entity_type, $field_name, $bundle_name);
+      foreach ($field['bundles'] as $entity_type => $bundles) {
+        foreach ($bundles as $bundle_name) {
+          $field_instance = field_info_instance($entity_type, $field_name, $bundle_name);
 
-        if (!in_array($field_instance['widget']['module'], $modules)) {
-          $modules[] = $field_instance['widget']['module'];
-          $dependencies .= 'dependencies[] = ' . $field_instance['widget']['module'] . "\n";
-        }
-
-        foreach ($field_instance['display'] as $type => $display) {
-          if (isset($display['module']) && !in_array($display['module'], $modules)) {
-            $modules[] = $display['module'];
-            $dependencies .= 'dependencies[] = ' . $display['module'] . "\n";
+          if (!in_array($field_instance['widget']['module'], $modules)) {
+            $modules[] = $field_instance['widget']['module'];
+            $dependencies .= 'dependencies[] = ' . $field_instance['widget']['module'] . "\n";
           }
-        }
 
-        unset($field_instance['id'], $field_instance['field_id']);
-        $output['field_instances'] .= "field_create_instance(" . drupal_var_export($field_instance) . ");\n";
-        unset($field_instance); // prevent memory spike
+          foreach ($field_instance['display'] as $type => $display) {
+            if (isset($display['module']) && !in_array($display['module'], $modules)) {
+              $modules[] = $display['module'];
+              $dependencies .= 'dependencies[] = ' . $display['module'] . "\n";
+            }
+          }
+
+          unset($field_instance['id'], $field_instance['field_id']);
+          $output['field_instances'] .= "field_create_instance(" . drupal_var_export($field_instance) . ");\n";
+          unset($field_instance); // prevent memory spike
+        }
       }
     }
   }
@@ -170,7 +178,7 @@ function _export_structure_page_callback($args = array()) {
   $dir = 'profile://' . $profile['machinename'];
 
   file_prepare_directory($dir, FILE_CREATE_DIRECTORY);
-  
+    
   $profile_info = <<<VAL
 name = {$profile['name']}
 description = {$profile['description']}
@@ -179,9 +187,13 @@ hidden = {$profile['hidden']}
 {$dependencies}
 VAL;
 
-  file_unmanaged_save_data($profile_info, $dir . "/{$profile['machinename']}.info", FILE_EXISTS_REPLACE);
+    if (!isset($_GET['from_remote'])) {
+      file_unmanaged_save_data($profile_info, $dir . "/{$profile['machinename']}.info", FILE_EXISTS_REPLACE);
+    } else {
+      echo $profile_info . "\n/* END PROFILE INFO */\n";
+    }
 
-  $profile_install = <<<VAL
+    $profile_install = <<<VAL
 <?php
 /**
  * @file
@@ -213,15 +225,27 @@ function {$profile['machinename']}_install() {
 }
 VAL;
 
-  file_unmanaged_save_data($profile_install, $dir . "/{$profile['machinename']}.install", FILE_EXISTS_REPLACE);
-  file_unmanaged_save_data('', $dir . "/{$profile['machinename']}.profile", FILE_EXISTS_REPLACE);
-
+  if (!isset($_GET['from_remote'])) {
+    file_unmanaged_save_data($profile_install, $dir . "/{$profile['machinename']}.install", FILE_EXISTS_REPLACE);
+    file_unmanaged_save_data('', $dir . "/{$profile['machinename']}.profile", FILE_EXISTS_REPLACE);
+  } else {
+    echo $profile_install;
+  }
 
   $msg = t('@profile_name profile created successfully', array('@profile_name' => $profile['machinename']));
 
   if (drupal_is_cli()) {
     drush_log($msg, 'success');
-  } else {
+  } elseif (!isset($_GET['from_remote'])) {
     echo $msg;
+  }
+}
+
+function _export_structure_process_remote_url($url) {
+  $output = array();
+  $res = drupal_http_request($url);
+
+  if ($res->code == 200) {
+    $data = explode("\n\n", $res->data);
   }
 }
