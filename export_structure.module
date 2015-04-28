@@ -43,7 +43,7 @@ function _export_structure_get_defaults() {
   return array(
     'machinename' => array(
       'val' => 'exported_structure',
-      'desc' => 'A machine name for the generated installation profile'
+      'desc' => 'A machine name for the generated installation profile.'
     ),
     'name' => array(
       'val' => 'Exported Structure',
@@ -59,11 +59,11 @@ function _export_structure_get_defaults() {
     ),
     'core' => array(
       'val' => '7.x',
-      'desc' => 'Drupal version the install profile requires.',
+      'desc' => 'Drupal version that the install profile requires.',
     ),
     'hidden' => array(
       'val' => 'FALSE',
-      'desc' => 'Whether the install profile should be hidden on the Drupal site installation page',
+      'desc' => 'Whether the install profile should be hidden on the Drupal site installation page.',
     ),
   );
 }
