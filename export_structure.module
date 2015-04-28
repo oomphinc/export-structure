@@ -24,10 +24,10 @@ function export_structure_menu() {
   $items = array();
 
   $items['export-structure'] = array(
-    'title'             => 'Export Structure',
-    'page callback'     => '_export_structure_page_callback',
-    'access arguments'  => TRUE,
-    'type'              => MENU_CALLBACK,
+    'title'            => 'Export Structure',
+    'page callback'    => '_export_structure_page_callback',
+    'access callback'  => TRUE,
+    'type'             => MENU_CALLBACK,
   );
 
   return $items;
@@ -150,7 +150,7 @@ function _export_structure_page_callback($args = array()) {
     foreach ($fields as $field_name => $field) {
       $field_config = field_info_field($field_name);
       unset($field_config['id']);
-      $output['fields'] .= "field_create_field(" . drupal_var_export($field_config) . ");\n";
+      $output['fields'] .= "field_create_field(" . drupal_var_export($field_config) . ");\n\n";
 
       foreach ($field['bundles'] as $entity_type => $bundles) {
         foreach ($bundles as $bundle_name) {
@@ -169,7 +169,7 @@ function _export_structure_page_callback($args = array()) {
           }
 
           unset($field_instance['id'], $field_instance['field_id']);
-          $output['field_instances'] .= "field_create_instance(" . drupal_var_export($field_instance) . ");\n";
+          $output['field_instances'] .= "field_create_instance(" . drupal_var_export($field_instance) . ");\n\n";
           unset($field_instance); // prevent memory spike
         }
       }
@@ -203,20 +203,20 @@ VAL;
     $install_string = $remote_profile[1];
   } else {
     $install_string = <<<VAL
-  // Load Content Types
-  {$output['content_types']};
+// Load Content Types
+{$output['content_types']}
 
 
-  // Load Vocabularies/Terms
-  {$output['vocabularies']};
+// Load Vocabularies/Terms
+{$output['vocabularies']}
 
 
-  // Load Fields
-  {$output['fields']};
+// Load Fields
+{$output['fields']}
 
 
-  // Load Field Instances
-  {$output['field_instances']};
+// Load Field Instances
+{$output['field_instances']}
 VAL;
   }
 
