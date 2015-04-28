@@ -175,25 +175,29 @@ function _export_structure_page_callback($args = array()) {
   }
 
   // Create install profile
-  $dir = 'profile://' . $profile['machinename'];
+  if (!isset($_GET['from_remote'])) {
+    $dir = 'profile://' . $profile['machinename'];
 
-  file_prepare_directory($dir, FILE_CREATE_DIRECTORY);
+    file_prepare_directory($dir, FILE_CREATE_DIRECTORY);
     
-  $profile_info = <<<VAL
+    $profile_info = <<<VAL
 name = {$profile['name']}
 description = {$profile['description']}
 core = {$profile['core']}
 hidden = {$profile['hidden']}
 {$dependencies}
 VAL;
+  } else {
+    $profile_info = $dependencies;
+  }
 
-    if (!isset($_GET['from_remote'])) {
-      file_unmanaged_save_data($profile_info, $dir . "/{$profile['machinename']}.info", FILE_EXISTS_REPLACE);
-    } else {
-      echo $profile_info . "\n/* END PROFILE INFO */\n";
-    }
+  if (!isset($_GET['from_remote'])) {
+    file_unmanaged_save_data($profile_info, $dir . "/{$profile['machinename']}.info", FILE_EXISTS_REPLACE);
+  } else {
+    echo $profile_info . "\n/* END PROFILE INFO */\n";
+  }
 
-    $profile_install = <<<VAL
+  $profile_install = <<<VAL
 <?php
 /**
  * @file
