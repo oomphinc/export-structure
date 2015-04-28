@@ -107,8 +107,9 @@ function _export_structure_page_callback($args = array()) {
   $profile = array_merge($default_args, $args);
 
   // Set custom dependencies
-  if (isset($profile['dependencies']) && is_array($profile['dependencies'])) {
-    foreach ($profile['dependencies'] as $dependency) {
+  if (isset($profile['dependencies'])) {
+    $deps = explode(',', $profile['dependencies']);
+    foreach ($deps as $dependency) {
       $dependencies .= 'dependencies[] = ' . $dependency . "\n";
     }
   }
@@ -216,7 +217,7 @@ VAL;
   file_unmanaged_save_data('', $dir . "/{$profile['machinename']}.profile", FILE_EXISTS_REPLACE);
 
 
-  $msg = t('@profile_name profile created successfully', array('@profile_name' => $profile['machine_name']));
+  $msg = t('@profile_name profile created successfully', array('@profile_name' => $profile['machinename']));
 
   if (drupal_is_cli()) {
     drush_log($msg, 'success');
