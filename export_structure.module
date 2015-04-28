@@ -119,6 +119,7 @@ function _export_structure_page_callback($args = array()) {
   }
 
   if (isset($profile['url'])) {
+    $profile['url'] .= '/export-structure?from_remote=1';
     $remote_profile = _export_structure_process_remote_url($profile['url']);
     $dependencies .= $remote_profile[0];
   } else {
@@ -255,6 +256,7 @@ VAL;
 }
 
 function _export_structure_process_remote_url($url) {
+  $url = str_replace('//', '/', $url);
   $res = drupal_http_request($url);
 
   if ($res->code == 200) {
