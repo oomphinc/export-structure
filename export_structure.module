@@ -119,7 +119,8 @@ function _export_structure_page_callback($args = array()) {
   }
 
   if (isset($profile['url'])) {
-    $output = _export_structure_process_remote_url($profile['url']);
+    $remote_profile = _export_structure_process_remote_url($profile['url']);
+    $dependencies .= $remote_profile[0];
   } else {
     // Export content types
     $content_types = node_type_get_types();
@@ -197,6 +198,27 @@ VAL;
     echo $profile_info . "\n/* END PROFILE INFO */\n";
   }
 
+  if (isset($remote_profile[1])) {
+    $install_string = $remote_profile[1];
+  } else {
+    $install_string = <<<VAL
+  // Load Content Types
+  {$output['content_types']};
+
+
+  // Load Vocabularies/Terms
+  {$output['vocabularies']};
+
+
+  // Load Fields
+  {$output['fields']};
+
+
+  // Load Field Instances
+  {$output['field_instances']};
+VAL;
+  }
+
   $profile_install = <<<VAL
 <?php
 /**
@@ -212,20 +234,7 @@ VAL;
  * @see system_install()
  */
 function {$profile['machinename']}_install() {
-  // Load Content Types
-  {$output['content_types']};
-
-
-  // Load Vocabularies/Terms
-  {$output['vocabularies']};
-
-
-  // Load Fields
-  {$output['fields']};
-
-
-  // Load Field Instances
-  {$output['field_instances']};
+  $install_string
 }
 VAL;
 
@@ -246,10 +255,11 @@ VAL;
 }
 
 function _export_structure_process_remote_url($url) {
-  $output = array();
   $res = drupal_http_request($url);
 
   if ($res->code == 200) {
-    $data = explode("\n\n", $res->data);
+    return explode("\n/* END PROFILE INFO */\n", $res->data);
   }
+
+  return array();
 }
